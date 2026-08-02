@@ -10,7 +10,12 @@ import {
   Scissors,
   Package,
   MonitorSmartphone,
-  BarChart3
+  BarChart3,
+  LayoutDashboard,
+  Briefcase,
+  Wrench,
+  CalendarDays,
+  CircleDollarSign
 } from "lucide-react";
 
 export type NavItem = {
@@ -40,8 +45,13 @@ export const getDynamicSidebarMenu = (tenantId: string): ModuleConfig => ({
   "staff-management": {
     title: "Staff Management",
     items: [
-      { name: "Staff List", href: `/${tenantId}/staff-management`, icon: Users },
-      { name: "Roles & Access", href: `/${tenantId}/staff-management/roles`, icon: UserCog },
+      { name: "Dashboard", href: `/${tenantId}/staff-management`, icon: LayoutDashboard },
+      { name: "Staff List", href: `/${tenantId}/staff-management/list`, icon: Users },
+      { name: "Roles & RBAC", href: `/${tenantId}/staff-management/roles`, icon: UserCog },
+      { name: "Master Profession", href: `/${tenantId}/staff-management/professions`, icon: Briefcase },
+      { name: "Skill & Service Map", href: `/${tenantId}/staff-management/skills`, icon: Wrench },
+      { name: "Roster & Shift", href: `/${tenantId}/staff-management/shifts`, icon: CalendarDays },
+      { name: "Commission Engine", href: `/${tenantId}/staff-management/commission`, icon: CircleDollarSign },
     ]
   },
   "appointments": {
