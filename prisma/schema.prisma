@@ -24,6 +24,65 @@ model BusinessTemplate {
   @@map("business_templates")
 }
 
+model Superadmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  createdAt    DateTime @default(now())
+
+  @@map("superadmins")
+}
+
+model SubscriptionPlan {
+  id               String   @id @default(uuid())
+  name             String   // Basic, Professional, Enterprise
+  pricePerMonth    Decimal  @db.Decimal(12, 2)
+  features         Json     // Array of feature strings
+  maxBranches      Int      // 1, 3, etc
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  tenantSubscriptions TenantSubscription[]
+  billingInvoices     BillingInvoice[]
+
+  @@map("subscription_plans")
+}
+
+model TenantSubscription {
+  id                 String           @id @default(uuid())
+  tenantId           String           @unique
+  subscriptionPlanId String
+  status             String           // ACTIVE, PAST_DUE, CANCELED, TRIAL
+  startDate          DateTime         @default(now())
+  nextBillingDate    DateTime
+  createdAt          DateTime         @default(now())
+
+  tenant             Tenant           @relation(fields: [tenantId], references: [id])
+  subscriptionPlan   SubscriptionPlan @relation(fields: [subscriptionPlanId], references: [id])
+  
+  billingInvoices    BillingInvoice[]
+
+  @@map("tenant_subscriptions")
+}
+
+model BillingInvoice {
+  id                   String             @id @default(uuid())
+  tenantSubscriptionId String
+  subscriptionPlanId   String
+  invoiceNumber        String             @unique
+  amount               Decimal            @db.Decimal(12, 2)
+  status               String             // PAID, UNPAID, VOID
+  invoiceDate          DateTime           @default(now())
+  paidAt               DateTime?
+  pdfUrl               String?
+
+  tenantSubscription   TenantSubscription @relation(fields: [tenantSubscriptionId], references: [id])
+  subscriptionPlan     SubscriptionPlan   @relation(fields: [subscriptionPlanId], references: [id])
+
+  @@map("billing_invoices")
+}
+
 model TemplateBusinessColor {
   id                 String           @id @default(uuid())
   businessTemplateId String
@@ -59,11 +118,14 @@ model TemplateProfession {
 
 model Tenant {
   id                 String           @id @default(uuid())
+  slug               String           @unique
   businessTemplateId String
   name               String
-  subscriptionStatus String           @default("TRIAL") // TRIAL, ACTIVE, PAST_DUE
+  logo_photo         String?
+  colorHex           String?
   createdAt          DateTime         @default(now())
   businessTemplate   BusinessTemplate @relation(fields: [businessTemplateId], references: [id])
+  tenantSubscription TenantSubscription?
   
   branches           Branch[]
   roles              Role[]
@@ -76,6 +138,9 @@ model Tenant {
   appointments       Appointment[]
   orders             Order[]
   commissionLogs     CommissionLog[]
+  holidays           Holiday[]
+  taxSettings        TaxSetting[]
+  paymentMethods     PaymentMethod[]
 
   @@map("tenants")
 }
@@ -83,6 +148,7 @@ model Tenant {
 model Branch {
   id                 String           @id @default(uuid())
   tenantId           String
+  parentId           String?
   name               String
   address            String?
   phone              String?
@@ -90,9 +156,13 @@ model Branch {
   receiptFooter      String?
   createdAt          DateTime         @default(now())
   tenant             Tenant           @relation(fields: [tenantId], references: [id])
+  parent             Branch?          @relation("BranchHierarchy", fields: [parentId], references: [id])
   
+  subBranches        Branch[]         @relation("BranchHierarchy")
   branchHours        BranchHour[]
+  holidays           Holiday[]
   taxSettings        TaxSetting[]
+  paymentMethods     PaymentMethod[]
   rooms              Room[]
   users              User[]
   staffRosters       StaffRoster[]
@@ -114,15 +184,53 @@ model BranchHour {
   @@map("branch_hours")
 }
 
+model Holiday {
+  id                 String           @id @default(uuid())
+  tenantId           String
+  branchId           String?
+  name               String
+  date               DateTime
+  createdAt          DateTime         @default(now())
+  
+  tenant             Tenant           @relation(fields: [tenantId], references: [id])
+  branch             Branch?          @relation(fields: [branchId], references: [id])
+
+  @@map("holidays")
+}
+
 model TaxSetting {
   id                      String           @id @default(uuid())
-  branchId                String
-  taxName                 String           // PPN, PB1, etc.
+  tenantId                String
+  branchId                String?
+  
+  applyTax                Boolean          @default(true)
+  taxName                 String           @default("VAT (PPN)")
   taxPercentage           Decimal          @db.Decimal(5, 2)
+  
+  applyServiceCharge      Boolean          @default(true)
   serviceChargePercentage Decimal          @db.Decimal(5, 2)
-  branch                  Branch           @relation(fields: [branchId], references: [id])
+
+  tenant                  Tenant           @relation(fields: [tenantId], references: [id])
+  branch                  Branch?          @relation(fields: [branchId], references: [id])
 
   @@map("tax_settings")
+}
+
+model PaymentMethod {
+  id                 String           @id @default(uuid())
+  tenantId           String
+  branchId           String?
+  methodCode         String           // CASH, QRIS, EDC_BCA, EDC_MANDIRI, TRANSFER, etc.
+  methodName         String           
+  isActive           Boolean          @default(true)
+  isDefault          Boolean          @default(false)
+  isCustom           Boolean          @default(false)
+  details            Json?            // Stores bank details, etc.
+
+  tenant             Tenant           @relation(fields: [tenantId], references: [id])
+  branch             Branch?          @relation(fields: [branchId], references: [id])
+
+  @@map("payment_methods")
 }
 
 model Room {

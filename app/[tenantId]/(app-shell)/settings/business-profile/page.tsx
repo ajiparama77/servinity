@@ -6,23 +6,95 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useRouter, useParams } from "next/navigation";
-import { CheckCircle2, UploadCloud, Hexagon, X } from "lucide-react";
-import { useState, useRef } from "react";
+import { CheckCircle2, UploadCloud, Hexagon, X, Loader2 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
 
 export default function BusinessProfilePage() {
-  const { businessTemplateName, themeColorHex, isSetupComplete, completeSetup } = useTenantStore();
+  const { businessTemplateName, themeColorHex, isSetupComplete, completeSetup, setTenantContext } = useTenantStore();
   const router = useRouter();
   const params = useParams();
-  const tenantId = params.tenantId as string;
+  const tenantSlug = params.tenantId as string;
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [bName, setBName] = useState("");
+  const [category, setCategory] = useState(businessTemplateName || "Salon & Beauty");
+  const [colorHex, setColorHex] = useState("");
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleCompleteSetup = (e: React.FormEvent) => {
+  useEffect(() => {
+    async function fetchTenant() {
+      try {
+        const res = await fetch(`/api/tenants/${tenantSlug}`);
+        if (res.ok) {
+          const data = await res.json();
+          setBName(data.name);
+          if (data.businessTemplate?.name) {
+            setCategory(data.businessTemplate.name);
+          }
+          if (data.logo_photo) {
+            setLogoPreview(data.logo_photo);
+          }
+          if (data.colorHex) {
+            setColorHex(data.colorHex);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch tenant:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    if (tenantSlug) {
+      fetchTenant();
+    }
+  }, [tenantSlug]);
+
+  const handleCompleteSetup = async (e: React.FormEvent) => {
     e.preventDefault();
-    completeSetup();
-    router.push(`/${tenantId}/overview`);
+    setIsSaving(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('name', bName);
+      formData.append('colorHex', colorHex);
+      if (fileInputRef.current?.files?.[0]) {
+        formData.append('logo', fileInputRef.current.files[0]);
+      }
+
+      const res = await fetch(`/api/tenants/${tenantSlug}`, {
+        method: 'PUT',
+        body: formData
+      });
+      
+      if (res.ok) {
+        const updated = await res.json();
+        // Update context store so sidebar updates immediately
+        setTenantContext(updated.id, updated.name, updated.effectiveColor || '#111827', updated.logo_photo);
+        
+        completeSetup();
+        router.push(`/${tenantSlug}/overview`);
+      } else {
+        alert("Gagal mengupdate profil bisnis");
+      }
+    } catch (error) {
+      console.error("Update error:", error);
+      alert("Terjadi kesalahan saat menyimpan data");
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[300px]">
+        <Loader2 className="animate-spin text-gray-400" size={32} />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl space-y-6 pb-12">
@@ -103,27 +175,50 @@ export default function BusinessProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
               <div className="space-y-2">
                 <Label htmlFor="bName">Business Name</Label>
-                <Input id="bName" defaultValue="Glamour Salon" required />
+                <Input 
+                  id="bName" 
+                  value={bName} 
+                  onChange={(e) => setBName(e.target.value)} 
+                  required 
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="category">Category</Label>
-                <Input id="category" defaultValue={businessTemplateName || "Salon & Beauty"} readOnly className="bg-gray-50 text-gray-500" />
+                <Input 
+                  id="category" 
+                  value={category} 
+                  readOnly 
+                  className="bg-gray-50 text-gray-500" 
+                />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input id="phone" placeholder="+62 812..." required={!isSetupComplete} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Contact Email</Label>
-                <Input id="email" type="email" defaultValue="owner@example.com" required />
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="colorHex">Custom Theme Color</Label>
+                <div className="flex items-center gap-3">
+                  <Input 
+                    type="color" 
+                    id="colorHexPicker" 
+                    value={colorHex || "#111827"} 
+                    onChange={(e) => setColorHex(e.target.value)} 
+                    className="w-12 h-10 p-1 cursor-pointer"
+                  />
+                  <Input 
+                    id="colorHex" 
+                    placeholder="#FFFFFF or leave empty for default" 
+                    value={colorHex} 
+                    onChange={(e) => setColorHex(e.target.value)} 
+                    className="flex-1 max-w-[200px]"
+                  />
+                </div>
+                <p className="text-xs text-gray-500">Leave empty to use your category's default color.</p>
               </div>
             </div>
 
             <div className="flex justify-end gap-4 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={() => router.push(`/${tenantId}/overview`)}>
+              <Button type="button" variant="outline" onClick={() => router.push(`/${tenantSlug}/overview`)} disabled={isSaving}>
                 Cancel
               </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSaving}>
+                {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 {isSetupComplete ? "Save Changes" : "Save & Unlock Features"}
               </Button>
             </div>

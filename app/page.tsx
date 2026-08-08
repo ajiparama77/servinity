@@ -1,12 +1,9 @@
 import AuthForm from "./components/AuthForm";
-import { getBusinessTemplates } from "./actions/templateActions";
 
-export default async function LandingPage() {
-  const { data: templates } = await getBusinessTemplates();
-
+export default function LandingPage() {
   return (
     <main>
-      <AuthForm templates={templates} />
+      <AuthForm />
     </main>
   );
 }

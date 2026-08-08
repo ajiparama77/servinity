@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, ChevronDown, ChevronRight, Edit2, Trash2, MapPin, X } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, Edit2, Trash2, MapPin, Phone, X, Loader2 } from "lucide-react";
+import { useParams } from "next/navigation";
 
 type DailySchedule = {
   day: string;
@@ -13,11 +14,11 @@ type DailySchedule = {
   closed: boolean;
 };
 
-// Mock data type
 type Branch = {
   id: string;
   name: string;
   address: string;
+  phone?: string;
   schedule: DailySchedule[];
   subBranches: Omit<Branch, 'subBranches'>[];
 };
@@ -32,36 +33,6 @@ const DEFAULT_SCHEDULE: DailySchedule[] = [
   { day: 'Sunday', start: '09:00', end: '17:00', closed: true },
 ];
 
-const INITIAL_DATA: Branch[] = [
-  {
-    id: 'm1',
-    name: 'HQ Jakarta',
-    address: 'Sudirman Central Business District, Jakarta',
-    schedule: DEFAULT_SCHEDULE,
-    subBranches: [
-      { id: 's1', name: 'Cabang Kebayoran', address: 'Jl. Senopati, Kebayoran Baru', schedule: DEFAULT_SCHEDULE },
-      { id: 's2', name: 'Cabang Kemang', address: 'Jl. Kemang Raya', schedule: DEFAULT_SCHEDULE }
-    ]
-  },
-  {
-    id: 'm2',
-    name: 'Regional Bandung',
-    address: 'Jl. Braga No. 12, Bandung',
-    schedule: DEFAULT_SCHEDULE,
-    subBranches: [
-      { id: 's3', name: 'Cabang Dago', address: 'Jl. Ir. H. Djuanda', schedule: DEFAULT_SCHEDULE }
-    ]
-  },
-  {
-    id: 'm3',
-    name: 'Regional Surabaya',
-    address: 'Jl. Tunjungan Plaza, Surabaya',
-    schedule: DEFAULT_SCHEDULE,
-    subBranches: []
-  }
-];
-
-// Modal UI Component - Moved outside to prevent re-mounting glitch on every render
 const Modal = ({ isOpen, onClose, title, children, maxWidth = "max-w-md" }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode, maxWidth?: string }) => {
   if (!isOpen) return null;
   return (
@@ -82,10 +53,14 @@ const Modal = ({ isOpen, onClose, title, children, maxWidth = "max-w-md" }: { is
 };
 
 export default function LocationsPage() {
-  const [locations, setLocations] = useState<Branch[]>(INITIAL_DATA);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    'm1': true
-  });
+  const params = useParams();
+  const tenantSlug = params.tenantId as string;
+
+  const [locations, setLocations] = useState<Branch[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   // Modal States
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -95,11 +70,34 @@ export default function LocationsPage() {
   const [selectedMasterId, setSelectedMasterId] = useState<string | null>(null);
   const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState({ name: '', address: '', schedule: DEFAULT_SCHEDULE });
+  const [formData, setFormData] = useState({ name: '', address: '', phone: '', schedule: DEFAULT_SCHEDULE });
 
   const [deletingType, setDeletingType] = useState<'master' | 'sub' | null>(null);
   const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null);
   const [deletingMasterId, setDeletingMasterId] = useState<string | null>(null);
+
+  const fetchLocations = async () => {
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/branches`);
+      if (res.ok) {
+        const data = await res.json();
+        setLocations(data);
+        
+        // Auto-expand first branch if loaded
+        if (data.length > 0 && Object.keys(expanded).length === 0) {
+          setExpanded({ [data[0].id]: true });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch locations:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tenantSlug) fetchLocations();
+  }, [tenantSlug]);
 
   const toggleAccordion = (id: string) => {
     setExpanded(prev => ({
@@ -111,21 +109,21 @@ export default function LocationsPage() {
   // Open Actions
   const openAddMaster = () => {
     setFormMode('add-master');
-    setFormData({ name: '', address: '', schedule: JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)) });
+    setFormData({ name: '', address: '', phone: '', schedule: JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)) });
     setIsFormOpen(true);
   };
 
   const openAddSub = (masterId: string) => {
     setFormMode('add-sub');
     setSelectedMasterId(masterId);
-    setFormData({ name: '', address: '', schedule: JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)) });
+    setFormData({ name: '', address: '', phone: '', schedule: JSON.parse(JSON.stringify(DEFAULT_SCHEDULE)) });
     setIsFormOpen(true);
   };
 
   const openEditMaster = (master: Branch) => {
     setFormMode('edit-master');
     setEditingBranchId(master.id);
-    setFormData({ name: master.name, address: master.address, schedule: JSON.parse(JSON.stringify(master.schedule || DEFAULT_SCHEDULE)) });
+    setFormData({ name: master.name, address: master.address || '', phone: master.phone || '', schedule: JSON.parse(JSON.stringify(master.schedule || DEFAULT_SCHEDULE)) });
     setIsFormOpen(true);
   };
 
@@ -133,7 +131,7 @@ export default function LocationsPage() {
     setFormMode('edit-sub');
     setEditingBranchId(sub.id);
     setSelectedMasterId(masterId);
-    setFormData({ name: sub.name, address: sub.address, schedule: JSON.parse(JSON.stringify(sub.schedule || DEFAULT_SCHEDULE)) });
+    setFormData({ name: sub.name, address: sub.address || '', phone: sub.phone || '', schedule: JSON.parse(JSON.stringify(sub.schedule || DEFAULT_SCHEDULE)) });
     setIsFormOpen(true);
   };
 
@@ -151,54 +149,66 @@ export default function LocationsPage() {
   };
 
   // Handlers
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const id = Date.now().toString();
-    const newBranch = { id, name: formData.name, address: formData.address, schedule: formData.schedule };
+    setIsSaving(true);
     
-    if (formMode === 'add-master') {
-      setLocations([...locations, { ...newBranch, subBranches: [] }]);
-      setExpanded(prev => ({ ...prev, [id]: true }));
-    } else if (formMode === 'add-sub' && selectedMasterId) {
-      setLocations(locations.map(master => 
-        master.id === selectedMasterId 
-          ? { ...master, subBranches: [...master.subBranches, newBranch] }
-          : master
-      ));
-      setExpanded(prev => ({ ...prev, [selectedMasterId]: true }));
-    } else if (formMode === 'edit-master') {
-      setLocations(locations.map(master => 
-        master.id === editingBranchId ? { ...master, name: formData.name, address: formData.address, schedule: formData.schedule } : master
-      ));
-    } else if (formMode === 'edit-sub' && selectedMasterId) {
-      setLocations(locations.map(master => {
-        if (master.id === selectedMasterId) {
-          return {
-            ...master,
-            subBranches: master.subBranches.map(sub => 
-              sub.id === editingBranchId ? { ...sub, name: formData.name, address: formData.address, schedule: formData.schedule } : sub
-            )
-          };
-        }
-        return master;
-      }));
+    try {
+      const isEdit = formMode.includes('edit');
+      const method = isEdit ? 'PUT' : 'POST';
+      const endpoint = isEdit 
+        ? `/api/tenants/${tenantSlug}/branches/${editingBranchId}`
+        : `/api/tenants/${tenantSlug}/branches`;
+
+      const payload = {
+        name: formData.name,
+        address: formData.address,
+        phone: formData.phone,
+        schedule: formData.schedule,
+        parentId: formMode === 'add-sub' ? selectedMasterId : null
+      };
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        await fetchLocations();
+        setIsFormOpen(false);
+      } else {
+        alert("Failed to save branch");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error saving branch");
+    } finally {
+      setIsSaving(false);
     }
-    
-    setIsFormOpen(false);
   };
 
-  const handleDeleteConfirm = () => {
-    if (deletingType === 'master') {
-      setLocations(locations.filter(m => m.id !== deletingBranchId));
-    } else if (deletingType === 'sub' && deletingMasterId) {
-      setLocations(locations.map(m => {
-        if (m.id === deletingMasterId) {
-          return { ...m, subBranches: m.subBranches.filter(s => s.id !== deletingBranchId) };
-        }
-        return m;
-      }));
+  const handleDeleteConfirm = async () => {
+    if (!deletingBranchId) return;
+    setIsSaving(true);
+    
+    try {
+      const res = await fetch(`/api/tenants/${tenantSlug}/branches/${deletingBranchId}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        await fetchLocations();
+        setIsDeleteOpen(false);
+      } else {
+        alert("Failed to delete branch");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error deleting branch");
+    } finally {
+      setIsSaving(false);
     }
-    setIsDeleteOpen(false);
   };
 
   const getFormTitle = () => {
@@ -208,8 +218,16 @@ export default function LocationsPage() {
     return 'Edit Sub-branch';
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <Loader2 className="animate-spin text-gray-400" size={32} />
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-5xl space-y-8">
+    <div className="max-w-5xl space-y-8 pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -249,9 +267,17 @@ export default function LocationsPage() {
                         {master.subBranches.length} Sub-branch{master.subBranches.length !== 1 && 'es'}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
-                      <MapPin size={14} />
-                      {master.address}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-500 mt-1">
+                      <span className="flex items-center gap-1.5">
+                        <MapPin size={14} />
+                        {master.address}
+                      </span>
+                      {master.phone && (
+                        <span className="flex items-center gap-1.5">
+                          <Phone size={14} />
+                          {master.phone}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -286,10 +312,18 @@ export default function LocationsPage() {
                             <h4 className="font-semibold text-gray-900 flex items-center gap-2">
                               {sub.name}
                             </h4>
-                            <p className="text-sm text-gray-500 flex items-center gap-1.5 mt-1">
-                              <MapPin size={14} />
-                              {sub.address}
-                            </p>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-1 text-sm text-gray-500">
+                              <span className="flex items-center gap-1.5">
+                                <MapPin size={14} />
+                                {sub.address}
+                              </span>
+                              {sub.phone && (
+                                <span className="flex items-center gap-1.5">
+                                  <Phone size={14} />
+                                  {sub.phone}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           
                           <div className="flex items-center gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
@@ -348,6 +382,15 @@ export default function LocationsPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input 
+                id="phone" 
+                placeholder="e.g. 021-123456" 
+                value={formData.phone}
+                onChange={(e) => setFormData({...formData, phone: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
               <Label htmlFor="address">Full Address</Label>
               <Input 
                 id="address" 
@@ -412,10 +455,11 @@ export default function LocationsPage() {
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-6">
-            <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)} disabled={isSaving}>
               Cancel
             </Button>
-            <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+            <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSaving}>
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Branch
             </Button>
           </div>
@@ -430,10 +474,11 @@ export default function LocationsPage() {
             {deletingType === 'master' && " All sub-branches inside it will also be removed."}
           </p>
           <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="outline" onClick={() => setIsDeleteOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setIsDeleteOpen(false)} disabled={isSaving}>
               Cancel
             </Button>
-            <Button type="button" variant="destructive" className="bg-red-600 text-white hover:bg-red-700 hover:text-white" onClick={handleDeleteConfirm}>
+            <Button type="button" variant="destructive" className="bg-red-600 text-white hover:bg-red-700 hover:text-white" onClick={handleDeleteConfirm} disabled={isSaving}>
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Yes, Delete
             </Button>
           </div>

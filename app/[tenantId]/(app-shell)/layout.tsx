@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { Bell, ChevronRight, LogOut, ArrowLeft } from "lucide-react";
 import { getDynamicSidebarMenu } from "@/lib/navigation";
+import { useEffect } from "react";
 
 export default function AppShellLayout({
   children,
@@ -12,10 +13,29 @@ export default function AppShellLayout({
   children: React.ReactNode;
 }) {
   const params = useParams();
+  const tenantSlug = params.tenantId as string;
   const pathname = usePathname();
   const router = useRouter();
-  const tenantId = params.tenantId as string;
-  const { businessTemplateName, themeColorHex } = useTenantStore();
+  const { businessTemplateName, themeColorHex, logoUrl, setTenantContext } = useTenantStore();
+
+  useEffect(() => {
+    async function initTenant() {
+      if (!tenantSlug) return;
+      try {
+        const res = await fetch(`/api/tenants/${tenantSlug}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTenantContext(data.id, data.name, data.effectiveColor || '#111827', data.logo_photo);
+        }
+      } catch (error) {
+        console.error("Failed to fetch tenant for layout:", error);
+      }
+    }
+    
+    if (!businessTemplateName) {
+      initTenant();
+    }
+  }, [tenantSlug, businessTemplateName, setTenantContext, themeColorHex]);
 
   const handleLogout = () => {
     router.push("/");
@@ -28,7 +48,7 @@ export default function AppShellLayout({
   // pathSegments[0] is tenantId, pathSegments[1] is the module
   const currentModuleKey = pathSegments.length > 1 ? pathSegments[1] : 'overview';
 
-  const dynamicMenuConfig = getDynamicSidebarMenu(tenantId);
+  const dynamicMenuConfig = getDynamicSidebarMenu(tenantSlug);
   const activeMenu = dynamicMenuConfig[currentModuleKey];
 
   return (
@@ -40,13 +60,19 @@ export default function AppShellLayout({
           style={{ backgroundColor: themeColorHex || '#111827' }}
         >
           <div className="p-6">
-            <h2 className="text-2xl font-bold tracking-tight">Servinity</h2>
+            <div className="flex items-center gap-3">
+              {logoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt="Tenant Logo" className="w-8 h-8 rounded-md object-cover bg-white p-0.5" />
+              )}
+              <h2 className="text-2xl font-bold tracking-tight">Servinity</h2>
+            </div>
             <p className="text-sm opacity-80 mt-1 font-medium">{businessTemplateName || "Loading..."}</p>
           </div>
 
           <div className="px-4 mb-4">
             <Link 
-              href={`/${tenantId}/overview`}
+              href={`/${tenantSlug}/overview`}
               className="flex items-center gap-2 text-sm font-medium opacity-80 hover:opacity-100 transition-opacity bg-black/20 hover:bg-black/30 py-2 px-3 rounded-md"
             >
               <ArrowLeft size={16} />
