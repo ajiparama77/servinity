@@ -39,6 +39,12 @@ export default async function AdminLayout({
               Subscriptions
             </span>
           </Link>
+          <Link href="/admin/templates">
+            <span className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">
+              <Hexagon size={20} />
+              Templates & Roles
+            </span>
+          </Link>
         </nav>
 
         <div className="p-4 border-t border-slate-800">

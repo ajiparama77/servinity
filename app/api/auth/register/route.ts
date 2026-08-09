@@ -39,16 +39,13 @@ export async function POST(req: Request) {
 
     // Gunakan transaksi untuk memastikan semua data tersimpan dengan benar
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Ambil TemplateRole untuk OWNER berdasarkan businessTemplateId
-      const templateRole = await tx.templateRole.findFirst({
-        where: {
-          businessTemplateId,
-          roleCode: "OWNER",
-        },
+      // 1. Ambil Semua TemplateRole berdasarkan businessTemplateId
+      const templateRoles = await tx.templateRole.findMany({
+        where: { businessTemplateId },
       });
 
-      if (!templateRole) {
-        throw new Error("Template Role 'OWNER' tidak ditemukan untuk bisnis template ini");
+      if (!templateRoles.length) {
+        throw new Error("Template Roles tidak ditemukan untuk bisnis template ini");
       }
 
       const newTenant = await tx.tenant.create({
@@ -59,16 +56,28 @@ export async function POST(req: Request) {
         },
       });
 
-      // 3. Buat Role khusus untuk Tenant ini (berdasarkan TemplateRole OWNER)
-      const newRole = await tx.role.create({
-        data: {
-          tenantId: newTenant.id,
-          templateRoleId: templateRole.id,
-          // Secara default permissions bisa mengambil dari bawaan template jika ada, 
-          // atau kita inisiasi dengan JSON kosong/penuh sementara.
-          permissions: {}, 
-        },
+      // 3. Buat semua Role khusus untuk Tenant ini
+      const rolesData = templateRoles.map(tr => ({
+        tenantId: newTenant.id,
+        templateRoleId: tr.id,
+        permissions: {}, 
+      }));
+
+      await tx.role.createMany({
+        data: rolesData
       });
+
+      // Fetch back the newly created roles to find the OWNER role ID
+      const createdRoles = await tx.role.findMany({
+        where: { tenantId: newTenant.id },
+        include: { templateRole: true }
+      });
+
+      const ownerRole = createdRoles.find(r => r.templateRole.roleCode === "OWNER");
+
+      if (!ownerRole) {
+        throw new Error("Owner Role gagal dibuat");
+      }
 
       // 4. Buat User sebagai OWNER
       const newUser = await tx.user.create({
@@ -76,11 +85,22 @@ export async function POST(req: Request) {
           email,
           passwordHash,
           tenantId: newTenant.id,
-          roleId: newRole.id,
+          roleId: ownerRole.id,
         },
       });
 
-      return { tenant: newTenant, user: newUser };
+      // 5. Buat profil Staff untuk Owner
+      const newStaff = await tx.staff.create({
+        data: {
+          tenantId: newTenant.id,
+          userId: newUser.id,
+          fullName: "Owner",
+          phone: null,
+          professionId: null,
+        }
+      });
+
+      return { tenant: newTenant, user: newUser, staff: newStaff };
     });
 
     return NextResponse.json(

@@ -283,13 +283,13 @@ model Staff {
   id                 String           @id @default(uuid())
   tenantId           String
   userId             String?          @unique
-  professionId       String
+  professionId       String?
   fullName           String
   phone              String?
   isActive           Boolean          @default(true)
   tenant             Tenant           @relation(fields: [tenantId], references: [id])
   user               User?            @relation(fields: [userId], references: [id])
-  profession         TemplateProfession @relation(fields: [professionId], references: [id])
+  profession         TemplateProfession? @relation(fields: [professionId], references: [id])
   
   staffRosters       StaffRoster[]
   staffServices      StaffService[]

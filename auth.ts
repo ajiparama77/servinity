@@ -36,7 +36,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // 2. Check regular User (Tenant)
         const user = await prisma.user.findUnique({
           where: { email: credentials.email as string },
-          include: { tenant: true }
+          include: { 
+            tenant: true,
+            role: { include: { templateRole: true } },
+            staffProfile: true
+          }
         });
 
         if (!user) return null;
@@ -49,10 +53,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (passwordsMatch) {
           return {
             id: user.id,
+            name: user.staffProfile?.fullName || null,
             email: user.email,
             tenantId: user.tenantId,
             tenantSlug: user.tenant.slug,
             roleId: user.roleId,
+            roleName: user.role?.templateRole?.roleName || "User",
             isSuperadmin: false,
           };
         }
@@ -67,6 +73,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.tenantId = (user as any).tenantId;
         token.tenantSlug = (user as any).tenantSlug;
         token.roleId = (user as any).roleId;
+        token.roleName = (user as any).roleName;
         token.isSuperadmin = (user as any).isSuperadmin;
       }
       return token;
@@ -77,6 +84,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         (session.user as any).tenantId = token.tenantId as string;
         (session.user as any).tenantSlug = token.tenantSlug as string;
         (session.user as any).roleId = token.roleId as string;
+        (session.user as any).roleName = token.roleName as string;
         (session.user as any).isSuperadmin = token.isSuperadmin as boolean;
       }
       return session;

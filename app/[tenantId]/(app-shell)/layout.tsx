@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { Bell, ChevronRight, LogOut, ArrowLeft } from "lucide-react";
 import { getDynamicSidebarMenu } from "@/lib/navigation";
-import { useEffect } from "react";
+import { useEffect, useState, useRef } from "react";
+import { getSession, signOut } from "next-auth/react";
 
 export default function AppShellLayout({
   children,
@@ -17,6 +18,11 @@ export default function AppShellLayout({
   const pathname = usePathname();
   const router = useRouter();
   const { businessTemplateName, themeColorHex, logoUrl, setTenantContext } = useTenantStore();
+
+  const [userName, setUserName] = useState("Loading...");
+  const [userRole, setUserRole] = useState("User");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function initTenant() {
@@ -37,7 +43,26 @@ export default function AppShellLayout({
     }
   }, [tenantSlug, businessTemplateName, setTenantContext, themeColorHex]);
 
-  const handleLogout = () => {
+  useEffect(() => {
+    getSession().then((session) => {
+      if (session?.user) {
+        setUserName(session.user.name || session.user.email?.split('@')[0] || "User");
+        setUserRole((session.user as any).roleName || ((session.user as any).isSuperadmin ? "Superadmin" : "Admin"));
+      }
+    });
+
+    // Close dropdown on outside click
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleLogout = async () => {
+    await signOut({ redirect: false });
     router.push("/");
   };
 
@@ -143,14 +168,37 @@ export default function AppShellLayout({
               <span className={`absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full ${themeColorHex ? 'border border-white' : ''}`}></span>
             </button>
             <div className={`h-6 w-px ${themeColorHex ? 'bg-white/20' : 'bg-gray-200'}`}></div>
-            <div className={`flex items-center space-x-3 cursor-pointer p-2 rounded-lg transition-colors ${themeColorHex ? 'hover:bg-black/10' : 'hover:bg-gray-50'}`}>
-              <div className="text-right hidden md:block">
-                <p className={`text-sm font-bold ${themeColorHex ? 'text-white' : 'text-gray-900'}`}>John Doe</p>
-                <p className={`text-xs ${themeColorHex ? 'text-white/80' : 'text-gray-500'}`}>Owner</p>
+            
+            <div className="relative" ref={dropdownRef}>
+              <div 
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className={`flex items-center space-x-3 cursor-pointer p-2 rounded-lg transition-colors ${themeColorHex ? 'hover:bg-black/10' : 'hover:bg-gray-50'}`}
+              >
+                <div className="text-right hidden md:block">
+                  <p className={`text-sm font-bold ${themeColorHex ? 'text-white' : 'text-gray-900'}`}>{userName}</p>
+                  <p className={`text-xs capitalize ${themeColorHex ? 'text-white/80' : 'text-gray-500'}`}>{userRole}</p>
+                </div>
+                <div className={`w-10 h-10 rounded-full border-2 shadow-sm flex items-center justify-center text-sm font-bold uppercase ${themeColorHex ? 'bg-white/20 border-white/50 text-white' : 'bg-gradient-to-tr from-gray-200 to-gray-300 border-white text-gray-600'}`}>
+                  {userName.substring(0, 2)}
+                </div>
               </div>
-              <div className={`w-10 h-10 rounded-full border-2 shadow-sm flex items-center justify-center text-sm font-bold ${themeColorHex ? 'bg-white/20 border-white/50 text-white' : 'bg-gradient-to-tr from-gray-200 to-gray-300 border-white text-gray-600'}`}>
-                JD
-              </div>
+
+              {/* Dropdown Menu */}
+              {isDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50 border border-gray-200">
+                  <div className="px-4 py-2 border-b border-gray-100 md:hidden">
+                    <p className="text-sm font-bold text-gray-900">{userName}</p>
+                    <p className="text-xs text-gray-500 capitalize">{userRole}</p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                  >
+                    <LogOut size={16} className="mr-2" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </header>
